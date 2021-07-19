@@ -18,9 +18,10 @@
 
 import re
 import threading
-import urllib.parse
 
-from lib.utils.file_utils import File
+from lib.utils.data import safequote
+from lib.utils.data import uniq
+from lib.utils.file import File, FileUtils
 
 
 class Dictionary(object):
@@ -34,27 +35,27 @@ class Dictionary(object):
         lowercase=False,
         uppercase=False,
         capitalization=False,
-        forcedExtensions=False,
-        excludeExtensions=[],
-        noExtension=False,
-        onlySelected=False,
+        force_extensions=False,
+        exclude_extensions=[],
+        no_extension=False,
+        only_selected=False,
     ):
 
         self.entries = []
-        self.currentIndex = 0
+        self.current_index = 0
         self.condition = threading.Lock()
         self._extensions = extensions
-        self._excludeExtensions = excludeExtensions
+        self._exclude_extensions = exclude_extensions
         self._prefixes = prefixes
         self._suffixes = suffixes
         self._paths = paths
-        self._forcedExtensions = forcedExtensions
-        self._noExtension = noExtension
-        self._onlySelected = onlySelected
+        self._force_extensions = force_extensions
+        self._no_extension = no_extension
+        self._only_selected = only_selected
         self.lowercase = lowercase
         self.uppercase = uppercase
         self.capitalization = capitalization
-        self.dictionaryFiles = [File(path) for path in self.paths]
+        self.dictionary_files = [File(path) for path in self.paths]
         self.generate()
 
     @property
@@ -72,10 +73,6 @@ class Dictionary(object):
     @paths.setter
     def paths(self, paths):
         self._paths = paths
-
-    @classmethod
-    def quote(cls, string):
-        return urllib.parse.quote(string, safe="!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
 
     """
     Dictionary.generate() behaviour
@@ -97,13 +94,12 @@ class Dictionary(object):
     def generate(self):
         reext = re.compile(r"\%ext\%", re.IGNORECASE).sub
         renoforce = re.compile(r"\%noforce\%", re.IGNORECASE).sub
-        find = re.findall
         custom = []
         result = []
 
         # Enable to use multiple dictionaries at once
-        for dictFile in self.dictionaryFiles:
-            for line in list(filter(None, dict.fromkeys(dictFile.get_lines()))):
+        for dict_file in self.dictionary_files:
+            for line in uniq(dict_file.get_lines(), filt=True):
                 # Skip comments
                 if line.lstrip().startswith("#"):
                     continue
@@ -111,43 +107,39 @@ class Dictionary(object):
                 if line.startswith("/"):
                     line = line[1:]
 
-                if self._noExtension:
+                if self._no_extension:
                     line = line[0] + line[1:].split(".")[0]
                     if line == ".":
                         continue
 
                 # Check if the line has the %NOFORCE% keyword
+                force = True
                 if "%noforce%" in line.lower():
-                    noforce = True
+                    force = False
                     line = renoforce("", line)
-                else:
-                    noforce = False
 
                 # Skip if the path contains excluded extensions
-                if self._excludeExtensions:
-                    if any(
-                        [find("." + extension, line) for extension in self._excludeExtensions]
-                    ):
-                        continue
+                if self._exclude_extensions and (
+                    any(["." + extension in line for extension in self._exclude_extensions])
+                ):
+                    continue
 
                 # Classic dirsearch wordlist processing (with %EXT% keyword)
                 if "%ext%" in line.lower():
                     for extension in self._extensions:
                         newline = reext(extension, line)
 
-                        quoted = self.quote(newline)
+                        quoted = safequote(newline)
                         result.append(quoted)
 
                 # If forced extensions is used and the path is not a directory ... (terminated by /)
                 # process line like a forced extension.
-                elif self._forcedExtensions and not line.rstrip().endswith("/") and not noforce:
-                    quoted = self.quote(line)
+                elif self._force_extensions and not line.rstrip().endswith("/") and "." not in line and force:
+                    quoted = safequote(line)
 
                     for extension in self._extensions:
                         # Why? Check https://github.com/maurosoria/dirsearch/issues/70
-                        if not extension.strip():
-                            result.append(quoted)
-                        else:
+                        if extension.strip():
                             result.append(quoted + "." + extension)
 
                     result.append(quoted)
@@ -155,75 +147,109 @@ class Dictionary(object):
 
                 # Append line unmodified.
                 else:
-                    quoted = self.quote(line)
+                    if self._only_selected and (
+                        not any([line.endswith("." + extension) for extension in self.extensions])
+                    ):
+                        continue
 
-                    if self._onlySelected and not line.rstrip().endswith("/") and "." in line:
-                        for extension in self._extensions:
-                            if line.endswith("." + extension):
-                                result.append(quoted)
-                                break
-
-                    else:
-                        result.append(quoted)
+                    quoted = safequote(line)
+                    result.append(quoted)
 
         # Adding prefixes for finding config files etc
         if self._prefixes:
-            for res in list(dict.fromkeys(result)):
+            for res in result:
                 for pref in self._prefixes:
                     if not res.startswith(pref):
                         custom.append(pref + res)
 
         # Adding suffixes for finding backups etc
         if self._suffixes:
-            for res in list(dict.fromkeys(result)):
-                if not res.rstrip().endswith("/"):
+            for res in result:
+                if not res.endswith("/"):
                     for suff in self._suffixes:
-                        if not res.rstrip().endswith(suff):
+                        if not res.endswith(suff):
                             custom.append(res + suff)
 
         result = custom if custom else result
 
         if self.lowercase:
-            self.entries = list(dict.fromkeys(map(lambda l: l.lower(), result)))
+            self.entries = uniq(map(lambda l: l.lower(), result))
 
         elif self.uppercase:
-            self.entries = list(dict.fromkeys(map(lambda l: l.upper(), result)))
+            self.entries = uniq(map(lambda l: l.upper(), result))
 
         elif self.capitalization:
-            self.entries = list(dict.fromkeys(map(lambda l: l.capitalize(), result)))
+            self.entries = uniq(map(lambda l: l.capitalize(), result))
 
         else:
-            self.entries = list(dict.fromkeys(result))
+            self.entries = uniq(result)
 
         del custom
         del result
 
-    def regenerate(self):
-        self.generate()
-        self.reset()
+    # Get ignore paths for status codes.
+    # More information: https://github.com/maurosoria/dirsearch#Blacklist
+    @staticmethod
+    def generate_blacklists(extensions, script_path):
+        reext = re.compile(r"\%ext\%", re.IGNORECASE).sub
+        blacklists = {}
 
-    def nextWithIndex(self, basePath=None):
+        for status in [400, 403, 500]:
+            blacklist_file_name = FileUtils.build_path(script_path, "db")
+            blacklist_file_name = FileUtils.build_path(
+                blacklist_file_name, "{}_blacklist.txt".format(status)
+            )
+
+            if not FileUtils.can_read(blacklist_file_name):
+                # Skip if cannot read file
+                continue
+
+            blacklists[status] = []
+
+            for line in FileUtils.get_lines(blacklist_file_name):
+                # Skip comments
+                if line.lstrip().startswith("#"):
+                    continue
+
+                if line.startswith("/"):
+                    line = line[1:]
+
+                # Classic dirsearch blacklist processing (with %EXT% keyword)
+                if "%ext%" in line.lower():
+                    for extension in extensions:
+                        entry = reext.sub(extension, line)
+                        blacklists[status].append(entry)
+
+                # Forced extensions is not used here because -r is only used for wordlist,
+                # applying in blacklist may create false negatives
+
+                else:
+                    blacklists[status].append(line)
+
+        return blacklists
+
+    def next_with_index(self, base_path=None):
         self.condition.acquire()
 
         try:
-            result = self.entries[self.currentIndex]
+            result = self.entries[self.current_index]
 
         except IndexError:
             self.condition.release()
             raise StopIteration
 
-        self.currentIndex = self.currentIndex + 1
-        currentIndex = self.currentIndex
+        self.current_index = self.current_index + 1
+        current_index = self.current_index
         self.condition.release()
-        return currentIndex, result
+        return current_index, result
 
-    def __next__(self, basePath=None):
-        _, path = self.nextWithIndex(basePath)
+    def __next__(self, base_path=None):
+        _, path = self.next_with_index(base_path)
         return path
 
     def reset(self):
         self.condition.acquire()
-        self.currentIndex = 0
+        self.current_index = 0
         self.condition.release()
 
     def __len__(self):

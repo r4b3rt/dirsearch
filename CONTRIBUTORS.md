@@ -1,6 +1,5 @@
 # Contributors
 
-- [Mauro Soria](https://twitter.com/_maurosoria)
 - [Pham Sy Minh](https://github.com/shelld3v)
 - [Valerio Rico](https://github.com/V-Rico)
 - [Damian Strobel](https://twitter.com/damian_89_)
@@ -59,12 +58,18 @@
 - [catmandx](https://github.com/catmandx)
 - [Kyle Nweeia](https://github.com/kyle-nweeia)
 - [Xib3rR4dAr](https://github.com/Xib3rR4dAr)
+- [Rohit Soni](https://github.com/StreetOfHackerR007/)
+- [Maxime Peim](https://github.com/maxime-peim)
+- [Christian Clauss](https://github.com/cclauss)
+- [Dipak Panchal](https://instagram.com/th3.d1p4k)
+- [Ivan Fedotov](https://github.com/qumusabel)
+- [Manuel Poisson](https://github.com/ManuelPOISSON)
 
-Special thanks for all the people who had helped dirsearch so far!
+Special thanks to all the people who are named here!
 
 ### How can I help the project?
 - Bug fixes
-- Code updates (clean, features, workflow, ...)
-- Better documentation
-- Better default wordlist
+- Code updates
+- Documentation updates
+- Wordlist updates
 - Feature requests

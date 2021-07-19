@@ -20,34 +20,36 @@ import json
 import time
 import sys
 
-from lib.reports import *
+from lib.reports.base import FileBaseReport
 
 
 class JSONReport(FileBaseReport):
-    def addPath(self, path, status, response):
-        try:
-            contentLength = int(response.headers["content-length"])
-        except (KeyError, ValueError):
-            contentLength = len(response.body)
-
-        self.storeData((path, status, contentLength, response.redirect))
-
     def generate(self):
-        headerName = "{0}://{1}:{2}/{3}".format(
-            self.protocol, self.host, self.port, self.basePath
-        )
+        report = {"info": {"args": ' '.join(sys.argv), "time": time.ctime()}, "results": []}
 
-        info = {"args": ' '.join(sys.argv), "time": time.ctime()}
+        for entry in self.entries:
+            result = {}
+            header_name = "{0}://{1}:{2}/{3}".format(
+                entry.protocol, entry.host, entry.port, entry.base_path
+            )
+            result[header_name] = []
 
-        result = {"info": info, headerName: []}
+            for e in entry.results:
+                path_entry = {
+                    "status": e.status,
+                    "path": "/" + e.path,
+                    "content-length": e.get_content_length(),
+                    "redirect": e.response.redirect,
+                }
+                result[header_name].append(path_entry)
 
-        for path, status, contentLength, redirect in self.pathList:
-            entry = {
-                "status": status,
-                "path": "/" + path,
-                "content-length": contentLength,
-                "redirect": redirect,
-            }
-            result[headerName].append(entry)
+            report["results"].append(result)
 
-        return json.dumps(result, sort_keys=True, indent=4)
+        return json.dumps(report, sort_keys=True, indent=4)
+
+    def save(self):
+        self.file.seek(0)
+        self.file.truncate(0)
+        self.file.flush()
+        self.file.writelines(self.generate())
+        self.file.flush()

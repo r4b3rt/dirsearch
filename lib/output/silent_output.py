@@ -17,35 +17,32 @@
 #  Author: Mauro Soria
 
 import sys
-import threading
-import urllib.parse
 
-from lib.utils.file_utils import *
-from thirdparty.colorama import init, Fore, Style
+from threading import Lock
+from urllib.parse import urlparse
+
+from lib.utils.size import human_size
+from .colors import ColorOutput
 
 if sys.platform in ["win32", "msys"]:
-    from thirdparty.colorama.win32 import *
-
-
-class NoColor:
-    RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = BRIGHT = RESET_ALL = ''
+    from thirdparty.colorama.win32 import (FillConsoleOutputCharacter,
+                                           GetConsoleScreenBufferInfo,
+                                           STDOUT)
 
 
 class PrintOutput(object):
     def __init__(self, color):
-        init()
-        self.mutex = threading.Lock()
+        self.mutex = Lock()
         self.blacklists = {}
-        self.mutexCheckedPaths = threading.Lock()
-        self.basePath = None
+        self.mutex_checked_paths = Lock()
+        self.base_path = None
         self.errors = 0
-        if not color:
-            self.disableColors()
+        self.colorizer = ColorOutput(color)
 
     def header(self, text):
         pass
 
-    def inLine(self, string):
+    def in_line(self, string):
         self.erase()
         sys.stdout.write(string)
         sys.stdout.flush()
@@ -65,63 +62,53 @@ class PrintOutput(object):
             sys.stdout.write("\033[1K")
             sys.stdout.write("\033[0G")
 
-    def newLine(self, string):
+    def new_line(self, string=''):
         sys.stdout.write(string + "\n")
         sys.stdout.flush()
 
-    def statusReport(self, path, response, full_url, addedToQueue):
-        contentLength = None
+    def status_report(self, path, response, full_url, added_to_queue):
         status = response.status
+        content_length = human_size(response.length)
 
-        # Format message
-        try:
-            size = int(response.headers["content-length"])
+        show_path = "/" + self.base_path + path
 
-        except (KeyError, ValueError):
-            size = len(response.body)
-
-        finally:
-            contentLength = FileUtils.size_human(size)
-
-        showPath = "/" + self.basePath + path
-
-        parsed = urllib.parse.urlparse(self.target)
-        showPath = "{0}://{1}{2}".format(parsed.scheme, parsed.netloc, showPath)
+        parsed = urlparse(self.target)
+        show_path = "{0}://{1}{2}".format(parsed.scheme, parsed.netloc, show_path)
 
         message = "{0} - {1} - {2}".format(
-            status, contentLength.rjust(6, " "), showPath
+            status, content_length.rjust(6, " "), show_path
         )
 
         if status in [200, 201, 204]:
-            message = Fore.GREEN + message + Style.RESET_ALL
+            message = self.colorizer.color(message, fore="green")
 
         elif status == 401:
-            message = Fore.YELLOW + message + Style.RESET_ALL
+            message = self.colorizer.color(message, fore="yellow")
 
         elif status == 403:
-            message = Fore.BLUE + message + Style.RESET_ALL
+            message = self.colorizer.color(message, fore="blue")
 
         elif status in range(500, 600):
-            message = Fore.RED + message + Style.RESET_ALL
+            message = self.colorizer.color(message, fore="red")
 
         elif status in range(300, 400):
-            message = Fore.CYAN + message + Style.RESET_ALL
-            if "location" in [h.lower() for h in response.headers]:
-                message += "  ->  {0}".format(response.headers["location"])
+            message = self.colorizer.color(message, fore="cyan")
 
         else:
-            message = Fore.MAGENTA + message + Style.RESET_ALL
+            message = self.colorizer.color(message, fore="magenta")
 
-        if addedToQueue:
+        if response.redirect:
+            message += "  ->  {0}".format(response.redirect)
+        if added_to_queue:
             message += "     (Added to queue)"
 
         with self.mutex:
-            self.newLine(message)
+            self.new_line(message)
 
-    def lastPath(self, path, index, length, currentJob, allJobs, rate):
+    def last_path(self, index, length, current_job, all_jobs, rate):
         pass
 
-    def addConnectionError(self):
+    def add_connection_error(self):
         self.errors += 1
 
     def error(self, reason):
@@ -141,25 +128,18 @@ class PrintOutput(object):
     ):
         pass
 
-    def setTarget(self, target, scheme):
+    def set_target(self, target, scheme):
         if not target.startswith("http://") and not target.startswith("https://") and "://" not in target:
             target = "{0}://{1}".format(scheme, target)
 
         self.target = target
 
-    def outputFile(self, target):
+    def output_file(self, target):
         pass
 
-    def errorLogFile(self, target):
+    def error_log_file(self, target):
         pass
 
     def debug(self, info):
         with self.mutex:
-            self.newLine(info)
-
-    def disableColors(self):
-        global Fore
-        global Style
-        global Back
-
-        Fore = Style = Back = NoColor
+            self.new_line(info)

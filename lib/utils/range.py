@@ -16,14 +16,8 @@
 #
 #  Author: Mauro Soria
 
-import random
-import string
 
-
-class RandomUtils(object):
-    @classmethod
-    def randString(cls, n=12, omit=None):
-        seq = string.ascii_lowercase + string.ascii_uppercase + string.digits
-        if omit:
-            seq = list(set(seq) - set(omit))
-        return "".join(random.choice(seq) for _ in range(n))
+def get_range(range_):
+    min_num, max_num = range_.split("-")
+    min_num, max_num = int(min_num), int(max_num)
+    return list(range(min_num, max_num + 1))

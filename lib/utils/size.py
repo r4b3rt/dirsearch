@@ -23,6 +23,15 @@ import platform
 import subprocess
 
 
+def human_size(num):
+    base = 1024
+    for x in ["B ", "KB", "MB", "GB"]:
+        if num < base and num > -base:
+            return "%3.0f%s" % (num, x)
+        num /= base
+    return "%3.0f %s" % (num, "TB")
+
+
 def get_terminal_size():
     """ getTerminalSize()
      - get width and height of console
@@ -87,7 +96,7 @@ def _get_terminal_size_tput():
 
 
 def _get_terminal_size_linux():
-    def ioctl_GWINSZ(fd):
+    def ioctl_gwinsz(fd):
         try:
             import fcntl
             import termios
@@ -97,11 +106,11 @@ def _get_terminal_size_linux():
         except Exception:
             pass
 
-    cr = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
+    cr = ioctl_gwinsz(0) or ioctl_gwinsz(1) or ioctl_gwinsz(2)
     if not cr:
         try:
             fd = os.open(os.ctermid(), os.O_RDONLY)
-            cr = ioctl_GWINSZ(fd)
+            cr = ioctl_gwinsz(fd)
             os.close(fd)
         except Exception:
             pass
@@ -111,8 +120,3 @@ def _get_terminal_size_linux():
         except Exception:
             return None
     return int(cr[1]), int(cr[0])
-
-
-if __name__ == "__main__":
-    sizex, sizey = get_terminal_size()
-    print("width =", sizex, "height =", sizey)
